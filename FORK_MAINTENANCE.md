@@ -27,7 +27,7 @@ This fork adds one intentionally small convention:
 --  becomes a space
 /   becomes ::
 -   remains a literal hyphen
-_   remains a literal underscore
+_   becomes a colon
 ```
 
 Examples:
@@ -39,16 +39,21 @@ Examples:
 #anki/Books/Pre-Post--Analysis
 -> Books::Pre-Post Analysis
 
-#anki/Books/snake_case
--> Books::snake_case
+#anki/Active--Recall/Games_--Agency--as--Art
+-> Active Recall::Games: Agency as Art
 ```
+
+The underscore is a reserved encoding character in this fork. Existing tags
+that previously produced literal underscores will instead produce colons, and
+there is currently no separate encoding for a literal underscore in an Anki
+deck name.
 
 The implementation is deliberately isolated:
 
 - `src/deck-name.ts` contains the deck-tag decoder.
 - `src/main.ts` calls the decoder while parsing a note's `#anki/...` tag.
-- `tests/deck-name.test.ts` covers spaces, nesting, hyphens, underscores, and
-  backward compatibility.
+- `tests/deck-name.test.ts` covers spaces, colons, nesting, literal hyphens, and
+  backward compatibility for tags that do not use the reserved encodings.
 - `README.md` documents the syntax.
 
 The goal is to keep this a small personal patch that is easy to retain while
@@ -111,11 +116,14 @@ As of 2026-08-13:
 - Upstream and the fork's `main` started at upstream version `1.7.0`.
 - Feature branch: `feat/deck-name-spaces`.
 - The feature and tests are committed.
-- Beta version: `1.8.0-beta.1`.
+- Current development version: `1.8.0-beta.2`.
 - GitHub prerelease `1.8.0-beta.1` is published with `main.js` and
   `manifest.json`.
 - The beta installs successfully through BRAT and the space-decoding behavior
   has been manually verified.
+- The underscore-to-colon rule was added after `beta.1` was published and must
+  be released as `1.8.0-beta.2`; published tags and release assets are not
+  rewritten.
 - A draft pull request targets `russluber/simple-anki-sync:main` from
   `feat/deck-name-spaces`.
 
@@ -126,8 +134,8 @@ misleading.
 
 After the full manual test checklist passes:
 
-1. Change the version in both `manifest.json` and `package.json` from
-   `1.8.0-beta.1` to `1.8.0`.
+1. After testing the latest beta, change the version in both `manifest.json`
+   and `package.json` from `1.8.0-beta.2` to `1.8.0`.
 2. Run:
 
    ```powershell
@@ -296,7 +304,8 @@ disposable test notes where practical.
   `Books::Causal Inference`.
 - Nested decks: multiple `/` components become multiple `::` components.
 - Literal punctuation: `Pre-Post--Analysis` becomes `Pre-Post Analysis`.
-- Underscores remain underscores.
+- Colon encoding: `Games_--Agency--as--Art` becomes
+  `Games: Agency as Art`.
 - Existing legacy tags containing only single hyphens remain unchanged.
 - Existing synced card: changing the deck tag updates or moves the existing
   card rather than creating a duplicate.

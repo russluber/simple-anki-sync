@@ -16,16 +16,16 @@ test('preserves nested deck hierarchy', () => {
   );
 });
 
-test('preserves single hyphens and underscores', () => {
+test('decodes underscores as colons while preserving single hyphens', () => {
   assert.equal(
-    decodeDeckTag('Books/Pre-Post--snake_case'),
-    'Books::Pre-Post snake_case'
+    decodeDeckTag('Active--Recall/Games_--Agency--as--Art'),
+    'Active Recall::Games: Agency as Art'
   );
 });
 
-test('preserves existing deck tags without double hyphens', () => {
+test('preserves existing deck tags without encoded punctuation', () => {
   assert.equal(
-    decodeDeckTag('My-Existing_Deck/Subdeck'),
-    'My-Existing_Deck::Subdeck'
+    decodeDeckTag('My-Existing-Deck/Subdeck'),
+    'My-Existing-Deck::Subdeck'
   );
 });
