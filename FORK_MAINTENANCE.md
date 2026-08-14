@@ -1,0 +1,369 @@
+# Personal Fork Maintenance Guide
+
+This document explains why this fork exists, how it is installed, how releases
+work, and how to incorporate future changes from the upstream project. Read it
+before changing, releasing, or updating this fork.
+
+## Purpose of this fork
+
+The upstream project is **Simple Anki Sync** by Lukas Mayr:
+
+- Upstream repository: `lukmay/simple-anki-sync`
+- Personal fork: `russluber/simple-anki-sync`
+
+Simple Anki Sync selects an Anki deck from an Obsidian tag such as:
+
+```text
+#anki/Books/Statistics
+```
+
+Obsidian tags cannot contain spaces. Upstream preserves hyphens, so a tag such
+as `#anki/Causal-Inference` normally creates the Anki deck
+`Causal-Inference`.
+
+This fork adds one intentionally small convention:
+
+```text
+--  becomes a space
+/   becomes ::
+-   remains a literal hyphen
+_   remains a literal underscore
+```
+
+Examples:
+
+```text
+#anki/Books/Causal--Inference
+-> Books::Causal Inference
+
+#anki/Books/Pre-Post--Analysis
+-> Books::Pre-Post Analysis
+
+#anki/Books/snake_case
+-> Books::snake_case
+```
+
+The implementation is deliberately isolated:
+
+- `src/deck-name.ts` contains the deck-tag decoder.
+- `src/main.ts` calls the decoder while parsing a note's `#anki/...` tag.
+- `tests/deck-name.test.ts` covers spaces, nesting, hyphens, underscores, and
+  backward compatibility.
+- `README.md` documents the syntax.
+
+The goal is to keep this a small personal patch that is easy to retain while
+merging future upstream updates. It is not intended to become a rewrite or a
+separate public Community Plugins submission.
+
+## Repository and remote layout
+
+The local repository has two remotes:
+
+```text
+origin    https://github.com/russluber/simple-anki-sync.git
+upstream  https://github.com/lukmay/simple-anki-sync.git
+```
+
+- Pull personal branches and releases from `origin`.
+- Fetch original-author updates from `upstream`.
+- Push personal work and release tags explicitly to `origin`.
+- Do not push to `upstream` unless intentionally contributing a change to the
+  original project.
+
+Useful checks:
+
+```powershell
+git remote -v
+git branch --show-current
+git status --short --branch
+```
+
+## Installation model
+
+Install only this fork through **BRAT** using:
+
+```text
+russluber/simple-anki-sync
+```
+
+Do not also install upstream Simple Anki Sync. Both repositories use the same
+Obsidian plugin ID, `simple-anki-sync`, so Obsidian treats them as the same
+plugin and they cannot coexist independently.
+
+BRAT monitors releases from the personal fork. It does not automatically merge
+or install releases from `lukmay/simple-anki-sync`.
+
+Because the fork retains the official plugin ID, also pay attention to version
+ordering. If upstream eventually publishes a version higher than the installed
+fork version, Obsidian's normal Community Plugins updater may regard that
+official build as an available update. Keep BRAT registered for the fork, do not
+accept an official update blindly, and publish a tested fork release with a
+higher version after incorporating the desired upstream changes.
+
+This fork is not published to Obsidian's Community Plugins directory. Creating
+a GitHub release does not submit it there. Community publication would require
+a separate, deliberate submission to Obsidian.
+
+## Current rollout status
+
+As of 2026-08-13:
+
+- Upstream and the fork's `main` started at upstream version `1.7.0`.
+- Feature branch: `feat/deck-name-spaces`.
+- The feature and tests are committed.
+- Beta version: `1.8.0-beta.1`.
+- GitHub prerelease `1.8.0-beta.1` is published with `main.js` and
+  `manifest.json`.
+- The beta installs successfully through BRAT and the space-decoding behavior
+  has been manually verified.
+- A draft pull request targets `russluber/simple-anki-sync:main` from
+  `feat/deck-name-spaces`.
+
+Update this section after completing the stable release so it does not become
+misleading.
+
+## Finish the current beta and make it stable
+
+After the full manual test checklist passes:
+
+1. Change the version in both `manifest.json` and `package.json` from
+   `1.8.0-beta.1` to `1.8.0`.
+2. Run:
+
+   ```powershell
+   npm test
+   npm run build
+   git diff --check
+   ```
+
+3. Commit and push the final version change to the feature branch:
+
+   ```powershell
+   git add manifest.json package.json
+   git commit -m "chore: prepare 1.8.0 release"
+   git push origin feat/deck-name-spaces
+   ```
+
+4. Update the pull-request description with the manual test results, mark the
+   PR ready, and merge it into the fork's `main`.
+5. Update the local `main` after the merge:
+
+   ```powershell
+   git switch main
+   git pull --ff-only origin main
+   ```
+
+6. Tag the commit that is now on `main`, then push the tag to the fork:
+
+   ```powershell
+   git tag 1.8.0
+   git show --no-patch --decorate 1.8.0
+   git push origin 1.8.0
+   ```
+
+7. The tag triggers `.github/workflows/relese.yml`. Wait for the workflow to
+   create a draft GitHub release containing `main.js` and `manifest.json`.
+8. Open the draft release, add release notes, leave **Set as a pre-release**
+   unchecked, and publish it.
+9. In Obsidian, ask BRAT to update the plugin. BRAT may require a manual update
+   when moving from a prerelease to the stable release with the same core
+   version.
+10. Once everything is confirmed, delete the merged feature branch if desired:
+
+    ```powershell
+    git branch -d feat/deck-name-spaces
+    git push origin --delete feat/deck-name-spaces
+    ```
+
+Never move or reuse an already-published tag. If a released artifact is wrong,
+fix it in a new commit and publish a new version.
+
+## Routine release workflow
+
+For any future change:
+
+1. Start from an up-to-date personal `main`.
+2. Create a focused feature or maintenance branch.
+3. Make and test the change.
+4. Bump `manifest.json` and `package.json` to the same new version.
+5. Commit and push the branch to `origin`.
+6. Open a pull request against the fork's `main`.
+7. For a beta, tag the beta commit and publish the generated draft release as a
+   prerelease.
+8. Test the prerelease through BRAT.
+9. Prepare the stable version, merge the PR, tag the resulting `main` commit,
+   and publish the generated stable release.
+
+The release tag must exactly match the version inside `manifest.json`:
+
+```text
+manifest version: 1.8.0-beta.2
+release tag:      1.8.0-beta.2
+```
+
+The existing GitHub Actions workflow runs for every pushed tag, builds the
+plugin, and creates a **draft** release. Publishing that draft is a separate
+manual action.
+
+## Versioning policy for the personal fork
+
+Use Semantic Versioning with exactly three numeric components:
+
+```text
+MAJOR.MINOR.PATCH
+```
+
+Use prerelease suffixes for testing:
+
+```text
+1.8.0-beta.1
+1.8.0-beta.2
+1.8.0
+```
+
+Do not use a four-part version such as `1.7.0.1`.
+
+Every fork release must have a unique version greater than the previous fork
+release. When upstream later publishes a version number already used by this
+fork, there is no repository-level collision, but choose a higher version in
+the fork to keep BRAT ordering and the history clear. For example:
+
+```text
+upstream 1.8.0 + retained fork customization -> fork 1.8.1
+upstream 1.9.0 + retained fork customization -> fork 1.9.1
+```
+
+The exact next number should also account for every version already published
+in the fork. Never lower the fork's version merely to match upstream.
+
+Git tags from `origin` and `upstream` share a single tag namespace in the local
+clone. If both repositories independently use the same tag name for different
+commits, Git will retain the existing local tag rather than treating them as two
+separate tags. The upstream branch is what matters for merging; avoid
+`git fetch upstream --tags`, never overwrite a published fork tag, and inspect
+the upstream release on GitHub if its tag is needed for reference.
+
+## When upstream is updated
+
+An upstream release does nothing automatically to the installed fork. Continue
+using the current fork until there is a reason to incorporate the upstream
+fixes or features.
+
+When an upstream update is wanted, merge it through a temporary branch rather
+than directly into the fork's `main`:
+
+```powershell
+git switch main
+git pull --ff-only origin main
+git fetch upstream
+git log --oneline main..upstream/main
+git switch -c chore/merge-upstream-1.8.0
+git merge upstream/main
+```
+
+If Git reports conflicts:
+
+1. Resolve them without discarding the deck-name decoder.
+2. Confirm `src/main.ts` still imports and calls `decodeDeckTag`.
+3. Confirm `src/deck-name.ts`, its tests, and README documentation remain.
+4. Check whether upstream changed deck parsing or implemented an equivalent
+   feature. Do not blindly preserve two competing decoders.
+
+Then validate:
+
+```powershell
+npm install
+npm test
+npm run build
+git diff --check
+```
+
+Also repeat the manual Obsidian/AnkiConnect checklist below. Bump the fork to a
+new version, commit, push the branch to `origin`, and open a pull request against
+the fork's `main`. Use the normal beta/stable release workflow.
+
+If upstream eventually provides equivalent space support with acceptable
+syntax and compatibility, consider removing the personal decoder and returning
+to upstream behavior. At that point this fork may no longer need a custom
+release line.
+
+## Manual test checklist
+
+Keep Anki open with AnkiConnect installed and active. Use a test vault or
+disposable test notes where practical.
+
+- New card: `#anki/Books/Causal--Inference` creates a card in
+  `Books::Causal Inference`.
+- Nested decks: multiple `/` components become multiple `::` components.
+- Literal punctuation: `Pre-Post--Analysis` becomes `Pre-Post Analysis`.
+- Underscores remain underscores.
+- Existing legacy tags containing only single hyphens remain unchanged.
+- Existing synced card: changing the deck tag updates or moves the existing
+  card rather than creating a duplicate.
+- Repeated syncs do not create additional cards.
+- Unrelated tags such as `#book` do not affect deck selection.
+- A filename containing spaces does not affect deck parsing.
+- The **Obsidian Note** backlink opens the source vault and note; when possible,
+  it jumps to the synced table.
+- Unsync behavior still removes only the cards managed by the source file.
+
+Record manual results in the pull-request description before merging a release.
+
+## Anki note IDs and duplicate cards
+
+Do not manually remove comments such as:
+
+```html
+<!--ANKI_NOTE_ID:1755123456789-->
+```
+
+The plugin writes this marker only after Anki successfully creates a note. On
+later syncs it uses the ID to update the existing note instead of creating a new
+one.
+
+Anki normally rejects a new note when another note of the same note type has the
+same first field (`Front` for `Basic`). The existing note may be in another
+deck. In that situation AnkiConnect reports:
+
+```text
+cannot create note because it is a duplicate
+```
+
+Because creation failed, no `ANKI_NOTE_ID` is returned or written into the
+Markdown table. This is expected failure behavior, not evidence that the table
+syntax itself is wrong.
+
+Before deleting anything, determine whether the existing Anki note has review
+history worth preserving:
+
+- Disposable duplicate: delete the unwanted Anki note and sync again.
+- Valuable existing note: preserve it and plan an explicit migration/linking
+  procedure.
+- Intentionally identical fronts: decide whether the fronts should be made
+  distinct or whether duplicate support should be designed deliberately.
+
+Do not enable `allowDuplicate` globally merely to silence this error. A missing
+ID marker could otherwise create accidental duplicate notes on every sync.
+
+## The Obsidian Note backlink
+
+The small **Obsidian Note** link appended to each Anki answer is intentional. It
+uses an `obsidian://` URL to launch or focus Obsidian, open the source vault and
+file, and locate the table by its Anki note ID. It is useful when a card needs to
+be corrected while reviewing in Anki.
+
+The backlink is separate from synchronization identity. The hidden
+`ANKI_NOTE_ID` marker in Markdown is what lets the plugin update a previously
+created Anki note.
+
+## Maintenance principles
+
+- Keep the fork-specific diff small and localized.
+- Prefer TypeScript source changes; never hand-edit generated `main.js`.
+- Do not change the Markdown flashcard table syntax for unrelated features.
+- Do not commit generated `main.js`; the release workflow builds it.
+- Preserve unrelated upstream behavior whenever possible.
+- Run automated tests, the production build, and live integration tests before
+  every release.
+- Use focused commits and pull requests so upstream merges remain understandable.
+- Keep BRAT pointed at `russluber/simple-anki-sync`, not the upstream repository.
