@@ -354,6 +354,58 @@ history worth preserving:
 Do not enable `allowDuplicate` globally merely to silence this error. A missing
 ID marker could otherwise create accidental duplicate notes on every sync.
 
+## AnkiConnect compatibility: note IDs and card IDs
+
+An Anki note and its generated cards have separate IDs. For example, note
+`1788234234068` can own card `1788234234069`. The Markdown `ANKI_NOTE_ID`
+comment, `updateNoteFields`, and note tags must keep using the note ID.
+`cardsInfo` and `changeDeck` require card IDs. Resolve those IDs from the
+`cards` array returned by `notesInfo`, then check each card's deck and move
+only cards outside the target deck. This also covers notes with multiple cards.
+
+The previous sync path incorrectly supplied the note ID to both card actions.
+AnkiConnect's [version 6 API documentation](https://github.com/FooSoft/anki-connect/blob/9f7dccaca071eedb51068bdf6ae5a11ffa60bac7/README.md)
+already distinguished these operations and documented successful deck changes
+as `{ "result": null, "error": null }`. The
+[archived implementation](https://github.com/FooSoft/anki-connect/blob/master/plugin/__init__.py)
+used a SQL update for deck moves. The updated add-on installed locally during
+this investigation routes deck changes through `cards.move`, which loads each
+card before moving it. This is consistent with the update exposing a previous
+ID mismatch that could otherwise pass without moving any card. A missing card
+at the supplied note ID is not, by itself, evidence of database corruption.
+
+The fix preserves the original notes, card IDs, and review state. Failed
+lookups, updates, and deck changes are reported instead of producing a
+successful sync notice. If a file contains new and existing notes, successfully
+created note IDs are saved before reporting an update/move error so retrying
+does not recreate those notes.
+
+Automated checks:
+
+```powershell
+npm test
+node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json
+npm run build
+git diff --check
+```
+
+Manual verification after installing the rebuilt `main.js` and reloading the
+plugin in Obsidian:
+
+1. Keep Anki open. Record an existing note's ID, its card IDs, and review state
+   from Anki's browser/card information or AnkiConnect.
+2. Edit Front, sync the current file, then edit Back and sync again. Confirm
+   both edits appear, the Markdown note ID is unchanged, and no duplicate or
+   `No such card` error appears.
+3. Change the file's deck tag and sync. Confirm the same cards move to the
+   decoded target deck and retain their review history. Sync again without
+   edits; the IDs and card count should remain stable.
+4. Repeat with an existing note that generates multiple cards with Front/Back
+   fields. All siblings outside the target deck should move; siblings already
+   there should be left alone.
+5. Confirm spaces (`--`), colons (`_`), hierarchy (`/`), media, and the Obsidian
+   backlink still work as before.
+
 ## The Obsidian Note backlink
 
 The small **Obsidian Note** link appended to each Anki answer is intentional. It

@@ -494,6 +494,7 @@ export default class SimpleAnkiSyncPlugin extends Plugin {
 
     const lines = orig.split('\n');
     const newIds: number[] = [];
+    let syncError: unknown;
 
     for (const note of notes) {
       // Media
@@ -525,11 +526,19 @@ export default class SimpleAnkiSyncPlugin extends Plugin {
       const fields = { Front: frontHtml, Back: backHtml };
 
       if (note.noteId) {
-        await this.anki.updateNote(note.noteId, fields);
+        // Retain the note's identity even if an update or deck move fails.
         newIds.push(note.noteId);
-        const info = await this.anki.fetchCardInfo([note.noteId]);
-        if (info[0]?.deckName !== deckName) {
-          await this.anki.changeDeck([note.noteId], deckName);
+        try {
+          await this.anki.updateNote(note.noteId, fields);
+          // Note operations use the Markdown ID; deck operations need every generated card ID.
+          const [noteInfo] = await this.anki.fetchNotesInfo([note.noteId]);
+          const cards = await this.anki.fetchCardInfo(noteInfo.cards);
+          const cardsToMove = cards.filter(card => card.deckName !== deckName).map(card => card.cardId);
+          if (cardsToMove.length && !(await this.anki.changeDeck(cardsToMove, deckName))) {
+            throw new Error(`Failed to move cards for note ${note.noteId} to "${deckName}".`);
+          }
+        } catch (err) {
+          syncError = err;
         }
       } else {
         const created = await this.anki.addNote(deckName, this.settings.defaultModel || 'Basic', fields);
@@ -542,7 +551,11 @@ export default class SimpleAnkiSyncPlugin extends Plugin {
           // Replace the fallback URL with the precise custom protocol URL now that we have an ID
           const newUrl = `obsidian://simple-anki-sync?vault=${encodeURIComponent(vault)}&file=${encodeURIComponent(file.path)}&noteId=${created}`;
           const updatedBackHtml = backHtml.replace(url, newUrl);
-          await this.anki.updateNote(created, { Front: frontHtml, Back: updatedBackHtml });
+          try {
+            await this.anki.updateNote(created, { Front: frontHtml, Back: updatedBackHtml });
+          } catch (err) {
+            syncError = err;
+          }
         }
       }
     }
@@ -568,6 +581,8 @@ export default class SimpleAnkiSyncPlugin extends Plugin {
     if (updated !== orig) {
       await this.app.vault.modify(file, updated);
     }
+    // Save IDs for any newly created notes before reporting an error, so retries cannot duplicate them.
+    if (syncError) throw syncError;
     if (!silent) new Notice(`${file.basename} synced.`);
     return newIds;
   }
