@@ -12,7 +12,13 @@ async function sendRequest(action: string, params: any = {}): Promise<any> {
     xhr.addEventListener('load', () => {
       try {
         const resp = JSON.parse(xhr.responseText);
-        if (resp.error) {
+        if (!resp || typeof resp !== 'object' ||
+          !Object.prototype.hasOwnProperty.call(resp, 'result') ||
+          !Object.prototype.hasOwnProperty.call(resp, 'error')) {
+          reject(new Error(`AnkiConnect returned an invalid response for ${action}.`));
+          return;
+        }
+        if (resp.error !== null) {
           console.error('AnkiConnect Error:', resp.error);
           reject(new Error(`AnkiConnect error: ${resp.error}`));
         } else {
@@ -93,6 +99,7 @@ export class AnkiService {
     } catch (err) {
       new Notice(`Failed to update note ${noteId}: ${err}`);
       console.error(err);
+      throw err;
     }
   }
 
@@ -107,21 +114,31 @@ export class AnkiService {
     }
   }
 
-  async fetchNotesInfo(ids: number[]): Promise<Array<{ noteId: number; fields: any; modelName: string; tags: string[] }>> {
+  async fetchNotesInfo(ids: number[]): Promise<Array<{ noteId: number; fields: any; modelName: string; tags: string[]; cards: number[] }>> {
     if (!ids.length) return [];
     try {
-      return await sendRequest('notesInfo', { notes: ids });
+      const infos = await sendRequest('notesInfo', { notes: ids });
+      if (!Array.isArray(infos) || infos.length !== ids.length ||
+        ids.some(id => !infos.some(info => info?.noteId === id && Array.isArray(info.cards) &&
+          info.cards.every((cardId: unknown) => typeof cardId === 'number')))) {
+        throw new Error('AnkiConnect did not return valid info for all requested notes.');
+      }
+      return infos;
     } catch (err) {
-      new Notice('Failed to fetch note info from Anki.');
+      new Notice(`Failed to fetch note info from Anki: ${err}`);
       console.error(err);
-      return [];
+      throw err;
     }
   }
 
   async changeDeck(cardIds: number[], deckName: string): Promise<boolean> {
     try {
-      const ok = await sendRequest('changeDeck', { cards: cardIds, deck: deckName });
-      return ok === true;
+      const result = await sendRequest('changeDeck', { cards: cardIds, deck: deckName });
+      // AnkiConnect's documented success result is null; also accept true.
+      if (result !== null && result !== true) {
+        throw new Error(`Unexpected changeDeck result: ${JSON.stringify(result)}`);
+      }
+      return true;
     } catch (err) {
       new Notice(`Failed to move card(s): ${err}`);
       console.error(err);
@@ -129,13 +146,19 @@ export class AnkiService {
     }
   }
 
-  async fetchCardInfo(cardIds: number[]): Promise<Array<{ deckName: string }>> {
+  async fetchCardInfo(cardIds: number[]): Promise<Array<{ cardId: number; deckName: string }>> {
+    if (!cardIds.length) return [];
     try {
-      return await sendRequest('cardsInfo', { cards: cardIds });
+      const infos = await sendRequest('cardsInfo', { cards: cardIds });
+      if (!Array.isArray(infos) || infos.length !== cardIds.length ||
+        cardIds.some(id => !infos.some(info => info?.cardId === id && typeof info.deckName === 'string'))) {
+        throw new Error('AnkiConnect did not return valid info for all requested cards.');
+      }
+      return infos;
     } catch (err) {
       new Notice(`cardsInfo error: ${err}`);
       console.error(err);
-      return [];
+      throw err;
     }
   }
 
