@@ -314,9 +314,47 @@ disposable test notes where practical.
 - A filename containing spaces does not affect deck parsing.
 - The **Obsidian Note** backlink opens the source vault and note; when possible,
   it jumps to the synced table.
+- Single-card deletion with a standalone ID marker deletes the Anki note and
+  removes the marker from Obsidian.
 - Unsync behavior still removes only the cards managed by the source file.
 
 Record manual results in the pull-request description before merging a release.
+
+## Deleting synced cards
+
+The README's original instruction to "simply delete the table" was incorrect
+for the current inline-ID format. SAS discovers deletions by comparing the
+`ANKI_NOTE_ID` comments still present in the file with the card tables parsed
+during that same sync. If the entire table is deleted first, its inline ID is
+also gone and SAS no longer knows which Anki note to delete.
+
+To delete one card from Obsidian and Anki:
+
+1. Switch the note to Source mode.
+2. Find the card's inline marker, for example:
+
+   ```html
+   <!--ANKI_NOTE_ID:1755123456789-->
+   ```
+
+3. Move or copy that marker onto its own standalone line.
+4. Delete the complete three-line Markdown table while retaining the standalone
+   marker.
+5. Run **Sync current file with Anki** while the Anki note still exists.
+
+The ID remains in `existingIds` but not in the IDs of parsed tables, so SAS calls
+`deleteNotes` for it. After successful deletion, SAS removes the standalone
+comment from the Markdown file. This workflow was manually verified against
+Anki and AnkiConnect.
+
+Do not delete the Anki note first. If a parsed Markdown table or orphaned marker
+still references the deleted note, later synchronization can report an update,
+lookup, or deletion error. If the note was already deleted manually, remove its
+table and every remaining copy of that `ANKI_NOTE_ID` before syncing again.
+
+To delete all cards managed by one file, prefer **Unsync current file with
+Anki** before deleting the tables or `#anki/...` deck tag. That command reads all
+IDs while they still exist, deletes those Anki notes, and removes the markers.
 
 ## Anki note IDs and duplicate cards
 

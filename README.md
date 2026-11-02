@@ -124,7 +124,27 @@ https://github.com/user-attachments/assets/790abb16-b7ea-43d2-995c-720ac1c9b2ed
 
 ## Deleting Cards
 
-To remove a card from Anki, simply delete its table (or row) here. On next sync, the card will vanish from Anki too.
+The plugin needs the card's hidden `ANKI_NOTE_ID` long enough to tell Anki which
+note to delete. Deleting the entire table at once also deletes that ID, leaving
+the Anki note behind.
+
+To delete one synced card safely:
+
+1. Switch the Obsidian note to Source mode.
+2. Copy its `<!--ANKI_NOTE_ID:...-->` comment out of the answer row and place it
+   on a standalone line.
+3. Delete the three-line card table, but leave the standalone ID comment.
+4. Run **Sync current file with Anki**.
+
+The sync deletes the corresponding Anki note and removes the standalone ID
+comment automatically. Do not delete the Anki note first; the retained Markdown
+ID would then refer to a note that no longer exists.
+
+To delete every synced card belonging to a file, use **Unsync current file with
+Anki** before removing its tables or deck tag.
+
+If the Anki note was already deleted manually, remove both its Markdown table
+and any remaining `ANKI_NOTE_ID` comment before syncing again.
 
 ---
 
