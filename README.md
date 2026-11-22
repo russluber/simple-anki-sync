@@ -140,6 +140,11 @@ The sync deletes the corresponding Anki note and removes the standalone ID
 comment automatically. Do not delete the Anki note first; the retained Markdown
 ID would then refer to a note that no longer exists.
 
+If deletion fails, the plugin reports the error and keeps the ID comment so you
+can retry. Close Anki's Browse/Edit windows if the error says the affected note
+is open in an editor; wait for any AnkiWeb sync to finish, then sync the file again.
+The same protection applies to whole-file unsync.
+
 To delete every synced card belonging to a file, use **Unsync current file with
 Anki** before removing its tables or deck tag.
 

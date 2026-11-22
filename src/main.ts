@@ -563,17 +563,22 @@ export default class SimpleAnkiSyncPlugin extends Plugin {
     // Remove old IDs and Anki-Cards
     const toDelete = existingIds.filter(id => !newIds.includes(id));
     if (toDelete.length) {
-      await this.anki.deleteNotes(toDelete);
-      for (const id of toDelete) {
-        for (let idx = lines.length - 1; idx >= 0; idx--) {
-          const result = this.stripNoteIdFromLine(lines[idx], id);
-          if (!result.removed) continue;
-          if (result.removeLine) {
-            lines.splice(idx, 1);
-          } else {
-            lines[idx] = result.updatedLine;
+      try {
+        await this.anki.deleteNotes(toDelete);
+        for (const id of toDelete) {
+          for (let idx = lines.length - 1; idx >= 0; idx--) {
+            const result = this.stripNoteIdFromLine(lines[idx], id);
+            if (!result.removed) continue;
+            if (result.removeLine) {
+              lines.splice(idx, 1);
+            } else {
+              lines[idx] = result.updatedLine;
+            }
           }
         }
+      } catch (err) {
+        // Keep deletion markers for retry, but still save IDs of newly created notes below.
+        syncError = err;
       }
     }
 
