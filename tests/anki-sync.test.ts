@@ -361,3 +361,111 @@ for (const action of ['notesInfo', 'cardsInfo']) {
     });
   }
 }
+
+const deletedId = NOTE_ID + 200;
+const deletedMarker = `<!--ANKI_NOTE_ID:${deletedId}-->`;
+const failedDeleteResponses = [
+  { name: 'open editor', response: { result: null, error: 'Close the affected editor before this API write, even if its content is saved.' } },
+  { name: 'busy collection', response: { result: null, error: 'Collection lifecycle operation is active.' } },
+  { name: 'false result', response: { result: false, error: null } },
+  { name: 'unexpected result', response: { result: 'ok', error: null } },
+  { name: 'missing result', response: { error: null } },
+  { name: 'missing error', response: { result: null } },
+  { name: 'invalid JSON', response: INVALID_JSON },
+  { name: 'network failure', response: NETWORK_ERROR },
+];
+
+for (const { name, response } of failedDeleteResponses) {
+  test(`sync retains orphaned IDs after a deletion ${name}`, async t => {
+    const fixture = syncFixture(t, [DECK_NAME], request => request.action === 'deleteNotes' ? response : undefined);
+    fixture.content += `\n\n${deletedMarker}`;
+    const content = fixture.content;
+
+    await assert.rejects(fixture.plugin.syncFile(fixture.file));
+
+    assert.deepEqual(calls(fixture, 'deleteNotes').map(request => request.params.notes), [[deletedId]]);
+    assert.equal(fixture.content, content);
+    assert.equal(fixture.modifications, 0);
+    assert.ok(!notices.includes('My note synced.'));
+    assert.ok(notices.some(notice => notice.startsWith('Could not delete notes:')));
+    assert.ok(!notices.some(notice => notice.startsWith('Deleted ')));
+  });
+
+  test(`unsync retains every ID after a deletion ${name}`, async t => {
+    const fixture = syncFixture(t, [DECK_NAME], request => request.action === 'deleteNotes' ? response : undefined);
+    fixture.content += `\n\n${deletedMarker}`;
+    const content = fixture.content;
+
+    await assert.rejects(fixture.plugin.unSyncFile(fixture.file));
+
+    assert.deepEqual(calls(fixture, 'deleteNotes').map(request => request.params.notes), [[NOTE_ID, deletedId]]);
+    assert.equal(fixture.content, content);
+    assert.equal(fixture.modifications, 0);
+    assert.ok(!notices.includes('My note successfully unsynced'));
+    assert.ok(!notices.some(notice => notice.startsWith('Deleted ')));
+  });
+}
+
+test('successful deletion removes only orphaned IDs and is not repeated on the next sync', async t => {
+  const fixture = syncFixture(t, [DECK_NAME], request => request.action === 'deleteNotes'
+    ? { result: null, error: null } : undefined);
+  fixture.content += `\n\n${deletedMarker}`;
+
+  assert.deepEqual(await fixture.plugin.syncFile(fixture.file), [NOTE_ID]);
+  assert.deepEqual(await fixture.plugin.syncFile(fixture.file), [NOTE_ID]);
+
+  assert.deepEqual(calls(fixture, 'deleteNotes').map(request => request.params.notes), [[deletedId]]);
+  assert.ok(!fixture.content.includes(deletedMarker));
+  assert.ok(fixture.content.includes(`<!--ANKI_NOTE_ID:${NOTE_ID}-->`));
+  assert.equal(fixture.modifications, 1);
+  assert.ok(notices.includes('Deleted 1 note(s) from Anki.'));
+});
+
+test('successful unsync removes inline and standalone IDs while keeping the card table', async t => {
+  const fixture = syncFixture(t, [DECK_NAME], request => request.action === 'deleteNotes'
+    ? { result: null, error: null } : undefined);
+  fixture.content += `\n\n${deletedMarker}`;
+
+  await fixture.plugin.unSyncFile(fixture.file);
+  await fixture.plugin.unSyncFile(fixture.file);
+
+  assert.deepEqual(calls(fixture, 'deleteNotes').map(request => request.params.notes), [[NOTE_ID, deletedId]]);
+  assert.ok(!fixture.content.includes('ANKI_NOTE_ID'));
+  assert.ok(fixture.content.includes('| Original front |\n| --- |\n| Original back'));
+  assert.equal(fixture.modifications, 1);
+  assert.ok(notices.includes('My note successfully unsynced'));
+});
+
+test('a failed deletion saves new note IDs and retains orphaned IDs so retry cannot duplicate new notes', async t => {
+  const newId = NOTE_ID + 100;
+  const newCardId = CARD_ID + 100;
+  let failDelete = true;
+  const fixture = syncFixture(t, [DECK_NAME], request => {
+    const { action, params } = request;
+    if (action === 'addNote') return { result: newId, error: null };
+    if (action === 'updateNoteFields' && params.note.id === newId) return { result: null, error: null };
+    if (action === 'notesInfo' && params.notes[0] === newId) {
+      return { result: [{ noteId: newId, tags: [MANAGED_TAG], cards: [newCardId] }], error: null };
+    }
+    if (action === 'cardsInfo' && params.cards[0] === newCardId) {
+      return { result: [{ cardId: newCardId, deckName: DECK_NAME }], error: null };
+    }
+    if (action === 'deleteNotes') {
+      return failDelete ? { result: null, error: 'Close the affected editor' } : { result: null, error: null };
+    }
+    return undefined;
+  });
+  fixture.content += `\n\n| New front |\n| --- |\n| New back |\n\n${deletedMarker}`;
+
+  await assert.rejects(fixture.plugin.syncFile(fixture.file), /Close the affected editor/);
+
+  assert.ok(fixture.content.includes(`<!--ANKI_NOTE_ID:${newId}-->`));
+  assert.ok(fixture.content.includes(`<!--ANKI_NOTE_ID:${NOTE_ID}-->`));
+  assert.ok(fixture.content.includes(deletedMarker));
+  assert.ok(!notices.includes('My note synced.'));
+  failDelete = false;
+  assert.deepEqual(await fixture.plugin.syncFile(fixture.file), [NOTE_ID, newId]);
+  assert.equal(calls(fixture, 'addNote').length, 1);
+  assert.deepEqual(calls(fixture, 'deleteNotes').map(request => request.params.notes), [[deletedId], [deletedId]]);
+  assert.ok(!fixture.content.includes(deletedMarker));
+});

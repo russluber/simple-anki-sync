@@ -111,31 +111,42 @@ a separate, deliberate submission to Obsidian.
 
 ## Current rollout status
 
-As of 2026-08-13:
+As of 2026-11-21:
 
-- Upstream and the fork's `main` started at upstream version `1.7.0`.
-- Feature branch: `feat/deck-name-spaces`.
-- The feature and tests are committed.
-- Current development version: `1.8.0-beta.2`.
-- GitHub prerelease `1.8.0-beta.1` is published with `main.js` and
-  `manifest.json`.
-- The beta installs successfully through BRAT and the space-decoding behavior
-  has been manually verified.
-- The underscore-to-colon rule was added after `beta.1` was published and must
-  be released as `1.8.0-beta.2`; published tags and release assets are not
-  rewritten.
-- A draft pull request targets `russluber/simple-anki-sync:main` from
-  `feat/deck-name-spaces`.
+- The fork started from upstream version `1.7.0`.
+- Space/colon decoding, note-ID/card-ID compatibility, and deletion workflow
+  documentation have been merged into the fork's `main`.
+- `1.8.0-beta.1` and `1.8.0-beta.2` are published prereleases.
+- `1.8.0-beta.3` packages the compatibility fix together with deletion failure
+  protection. Failed sync/unsync deletions retain their Markdown IDs for retry;
+  normal sync also saves newly created IDs before reporting a deletion error.
+- BRAT reads published release assets, not the code on `main`. The original
+  `beta.2` release predates the note-ID/card-ID fix, even though a manually
+  rebuilt installed copy may still identify itself as `beta.2`. Install
+  `beta.3` through BRAT to receive the complete set of fixes.
+- AnkiWeb's offered AnkiConnect package was identified as `26.11.19.1` for the
+  locally installed Anki `26.9.4`; SAS continues to use the supported legacy
+  version-6 API. Focused upstream tests ran against disposable collections.
 
-Update this section after completing the stable release so it does not become
-misleading.
+The current release branch is `fix/preserve-ids-on-delete-failure`. Update this
+section when the next release is prepared. Published tags and release assets
+must never be rewritten.
 
 ## Finish the current beta and make it stable
 
 After the full manual test checklist passes:
 
-1. After testing the latest beta, change the version in both `manifest.json`
-   and `package.json` from `1.8.0-beta.2` to `1.8.0`.
+1. After testing the latest beta and merging its PR, start a stable-release
+   branch from the fork's up-to-date `main`:
+
+   ```powershell
+   git switch main
+   git pull --ff-only origin main
+   git switch -c release/1.8.0
+   ```
+
+   Change the version in both `manifest.json` and `package.json` from
+   `1.8.0-beta.3` to `1.8.0`.
 2. Run:
 
    ```powershell
@@ -144,16 +155,16 @@ After the full manual test checklist passes:
    git diff --check
    ```
 
-3. Commit and push the final version change to the feature branch:
+3. Commit and push the final version change:
 
    ```powershell
    git add manifest.json package.json
    git commit -m "chore: prepare 1.8.0 release"
-   git push origin feat/deck-name-spaces
+   git push -u origin release/1.8.0
    ```
 
-4. Update the pull-request description with the manual test results, mark the
-   PR ready, and merge it into the fork's `main`.
+4. Open a pull request against the fork's `main`, include the manual test
+   results, and merge it.
 5. Update the local `main` after the merge:
 
    ```powershell
@@ -179,8 +190,8 @@ After the full manual test checklist passes:
 10. Once everything is confirmed, delete the merged feature branch if desired:
 
     ```powershell
-    git branch -d feat/deck-name-spaces
-    git push origin --delete feat/deck-name-spaces
+    git branch -d release/1.8.0
+    git push origin --delete release/1.8.0
     ```
 
 Never move or reuse an already-published tag. If a released artifact is wrong,
@@ -316,6 +327,9 @@ disposable test notes where practical.
   it jumps to the synced table.
 - Single-card deletion with a standalone ID marker deletes the Anki note and
   removes the marker from Obsidian.
+- A rejected deletion (for example, an affected note open in Anki's editor)
+  retains the marker and reports failure. Closing the editor and retrying
+  completes deletion. Whole-file unsync has the same protection.
 - Unsync behavior still removes only the cards managed by the source file.
 
 Record manual results in the pull-request description before merging a release.
@@ -346,6 +360,12 @@ The ID remains in `existingIds` but not in the IDs of parsed tables, so SAS call
 `deleteNotes` for it. After successful deletion, SAS removes the standalone
 comment from the Markdown file. This workflow was manually verified against
 Anki and AnkiConnect.
+
+From `1.8.0-beta.3`, a failed or invalid deletion response is propagated instead
+of being treated as success. Sync keeps orphaned IDs for retry and saves IDs of
+newly created notes before reporting the error. Unsync stops before modifying
+the file. Close Anki's affected Browse/Edit windows or wait for collection work
+to finish, then retry. Do not remove the retained IDs to silence an error.
 
 Do not delete the Anki note first. If a parsed Markdown table or orphaned marker
 still references the deleted note, later synchronization can report an update,

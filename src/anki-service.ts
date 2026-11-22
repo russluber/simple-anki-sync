@@ -106,11 +106,15 @@ export class AnkiService {
   async deleteNotes(ids: number[]): Promise<void> {
     if (!ids.length) return;
     try {
-      await sendRequest('deleteNotes', { notes: ids });
+      const result = await sendRequest('deleteNotes', { notes: ids });
+      if (result !== null) {
+        throw new Error(`Unexpected deleteNotes result: ${JSON.stringify(result)}`);
+      }
       new Notice(`Deleted ${ids.length} note(s) from Anki.`);
     } catch (err) {
       new Notice(`Could not delete notes: ${err}`);
       console.error(err);
+      throw err;
     }
   }
 
